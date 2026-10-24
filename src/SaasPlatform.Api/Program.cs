@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using SaasPlatform.Api.Infrastructure;
 using SaasPlatform.Application;
@@ -18,15 +19,19 @@ builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 builder.Services.AddApiRateLimiting(builder.Configuration);
 
-var jwt = builder.Configuration.GetSection(JwtSettings.Section).Get<JwtSettings>() ?? new JwtSettings();
-if (string.IsNullOrWhiteSpace(jwt.Key) || jwt.Key.Length < 32)
-    throw new InvalidOperationException("Jwt:Key must be set (min 32 chars). Use user-secrets or an environment variable.");
-
+// Validation parameters are built from IOptions<JwtSettings> on first use (not at registration time), so the
+// signer in JwtTokenService and the validator below always read the same, final configuration.
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(o =>
+    .AddJwtBearer(o => o.MapInboundClaims = false); // keep claim names like "tenant_id" and "sub" as-is
+builder.Services.AddOptions<JwtSettings>()
+    .Validate(j => !string.IsNullOrWhiteSpace(j.Key) && j.Key.Length >= 32,
+        "Jwt:Key must be set (min 32 chars). Use user-secrets or an environment variable.")
+    .ValidateOnStart(); // fail at startup, not on the first request
+builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtSettings>>((o, settings) =>
     {
-        o.MapInboundClaims = false; // keep claim names like "tenant_id" and "sub" as-is
+        var jwt = settings.Value;
         o.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
