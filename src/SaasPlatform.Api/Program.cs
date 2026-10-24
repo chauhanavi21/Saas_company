@@ -1,8 +1,8 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using SaasPlatform.Api.Infrastructure;
 using SaasPlatform.Application;
 using SaasPlatform.Infrastructure;
 using SaasPlatform.Infrastructure.Persistence;
@@ -13,10 +13,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(o => o.Filters.Add<ValidationFilter>());
 builder.Services.AddOpenApi();
-builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
+builder.Services.AddApiRateLimiting(builder.Configuration);
 
 var jwt = builder.Configuration.GetSection(JwtSettings.Section).Get<JwtSettings>() ?? new JwtSettings();
 if (string.IsNullOrWhiteSpace(jwt.Key) || jwt.Key.Length < 32)
@@ -36,6 +36,7 @@ builder.Services
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key)),
             RoleClaimType = "role",
+            NameClaimType = "name",
             ClockSkew = TimeSpan.FromSeconds(30)
         };
     });
@@ -46,27 +47,30 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(origins).All
 
 var app = builder.Build();
 
-app.UseExceptionHandler(errorApp => errorApp.Run(async ctx =>
+app.UseApiExceptionHandler();
+
+app.Use(async (ctx, next) =>
 {
-    var ex = ctx.Features.Get<IExceptionHandlerFeature>()?.Error;
-    var (status, title) = ex switch
-    {
-        InvalidOperationException => (StatusCodes.Status400BadRequest, ex.Message),
-        KeyNotFoundException => (StatusCodes.Status404NotFound, ex.Message),
-        _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred.")
-    };
-    ctx.Response.StatusCode = status;
-    await ctx.Response.WriteAsJsonAsync(new { status, title });
-}));
+    var h = ctx.Response.Headers;
+    h["X-Content-Type-Options"] = "nosniff";
+    h["X-Frame-Options"] = "DENY";
+    h["Referrer-Policy"] = "no-referrer";
+    h["Cache-Control"] = "no-store"; // API responses carry per-user data
+    await next();
+});
 
 if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
+
+// Apply EF Core migrations on startup for relational stores (tests swap in their own setup).
+if (app.Configuration.GetValue("Database:MigrateOnStartup", true))
+{
     using var scope = app.Services.CreateScope();
-    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate(); // applies pending EF Core migrations
+    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
 }
 
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -74,3 +78,6 @@ app.MapControllers();
 app.MapHealthChecks("/health");
 
 app.Run();
+
+/// <summary>Exposed so the integration test project can host the app with WebApplicationFactory.</summary>
+public partial class Program;
