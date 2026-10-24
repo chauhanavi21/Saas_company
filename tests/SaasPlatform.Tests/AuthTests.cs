@@ -106,10 +106,18 @@ public class AuthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
         Assert.Contains("current password is incorrect", await wrong.Text());
 
-        Assert.Equal(HttpStatusCode.NoContent,
-            (await admin.Post("/api/auth/change-password", new { currentPassword = "oldpassword1", newPassword = "brandnew123" })).StatusCode);
+        var changed = await admin.Post("/api/auth/change-password", new { currentPassword = "oldpassword1", newPassword = "brandnew123" });
+        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+        var fresh = await changed.Read<Session>();
 
+        // The caller is handed a working session, so they stay signed in on this device...
+        var renewed = await Refresh(http, fresh.RefreshToken);
+        Assert.Equal(HttpStatusCode.OK, renewed.StatusCode);
+        var current = await renewed.Read<Session>();
+
+        // ...while the pre-change session is dead. Replaying it also counts as token theft, so it ends every session.
         Assert.Equal(HttpStatusCode.Unauthorized, (await Refresh(http, admin.Session.RefreshToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Refresh(http, current.RefreshToken)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await http.PostAsJsonAsync("/api/auth/login", new { email = admin.Session.Email, password = "oldpassword1" })).StatusCode);
         Assert.Equal(HttpStatusCode.OK,

@@ -27,7 +27,8 @@ public interface IAuthService
     Task<AuthResponse?> LoginAsync(LoginRequest request, CancellationToken ct);
     Task<AuthResponse?> RefreshAsync(string refreshToken, CancellationToken ct);
     Task LogoutAsync(string refreshToken, CancellationToken ct);
-    Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct);
+    /// <summary>Changes the password, signs out every device, and returns a fresh session for the caller.</summary>
+    Task<AuthResponse> ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct);
 
     /// <summary>Issues an access + refresh token pair for a user (used by login, register and invite acceptance).</summary>
     Task<AuthResponse> IssueAsync(AppUser user, CancellationToken ct);
@@ -125,7 +126,7 @@ public class AuthService(
         }
     }
 
-    public async Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct)
+    public async Task<AuthResponse> ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct)
     {
         var userId = currentUser.UserId ?? throw new InvalidOperationException("No user in context.");
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
@@ -135,8 +136,9 @@ public class AuthService(
             throw new InvalidOperationException("Your current password is incorrect.");
 
         user.PasswordHash = hasher.Hash(request.NewPassword);
-        await RevokeAllAsync(user.Id, ct); // sign out every other device
+        await RevokeAllAsync(user.Id, ct); // sign out every device, then give this one a new session below
         await db.SaveChangesAsync(ct);
+        return await IssueAsync(user, ct);
     }
 
     public async Task<AuthResponse> IssueAsync(AppUser user, CancellationToken ct)

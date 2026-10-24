@@ -39,9 +39,6 @@ public class AuthController(IAuthService auth) : ControllerBase
 
     [HttpPost("change-password")]
     [Authorize]
-    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken ct)
-    {
-        await auth.ChangePasswordAsync(request, ct);
-        return NoContent();
-    }
+    public async Task<ActionResult<AuthResponse>> ChangePassword(ChangePasswordRequest request, CancellationToken ct)
+        => Ok(await auth.ChangePasswordAsync(request, ct));
 }
