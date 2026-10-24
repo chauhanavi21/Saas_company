@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using SaasPlatform.Application.Auth;
 using SaasPlatform.Application.Common;
@@ -29,18 +27,16 @@ public class InvitationService(
     ICurrentTenant currentTenant,
     ICurrentUser currentUser,
     IPasswordHasher hasher,
-    IJwtTokenService jwt) : IInvitationService
+    IAuthService auth,
+    IActivityRecorder activity) : IInvitationService
 {
-    private static readonly TimeSpan Lifetime = TimeSpan.FromDays(7);
+    public static readonly TimeSpan Lifetime = TimeSpan.FromDays(7);
 
     public async Task<CreatedInvitationDto> CreateAsync(CreateInvitationRequest request, CancellationToken ct)
     {
         var tenantId = currentTenant.TenantId ?? throw new InvalidOperationException("No tenant in context.");
         var inviterId = currentUser.UserId ?? throw new InvalidOperationException("No user in context.");
         var email = request.Email.Trim().ToLowerInvariant();
-
-        if (!email.Contains('@')) throw new InvalidOperationException("Enter a valid email address.");
-        if (!Roles.IsValid(request.Role)) throw new InvalidOperationException($"Role must be one of: {string.Join(", ", Roles.All)}.");
 
         // Emails are unique across the whole platform (one account per email).
         if (await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == email, ct))
@@ -53,17 +49,18 @@ public class InvitationService(
             .ToListAsync(ct);
         db.Invitations.RemoveRange(stale);
 
-        var token = WebSafeToken();
+        var token = TokenHasher.NewToken();
         var invitation = new Invitation
         {
             TenantId = tenantId,
             Email = email,
             Role = request.Role,
-            TokenHash = Hash(token),
+            TokenHash = TokenHasher.Hash(token),
             ExpiresAtUtc = now.Add(Lifetime),
             InvitedByUserId = inviterId
         };
         db.Invitations.Add(invitation);
+        activity.Record("invitation.created", "Invitation", invitation.Id, $"{email} as {request.Role}");
         await db.SaveChangesAsync(ct);
 
         return new CreatedInvitationDto(ToDto(invitation), token);
@@ -83,6 +80,7 @@ public class InvitationService(
     {
         var invitation = await db.Invitations.FirstOrDefaultAsync(i => i.Id == id, ct)
             ?? throw new KeyNotFoundException("Invitation not found.");
+        activity.Record("invitation.revoked", "Invitation", invitation.Id, invitation.Email);
         db.Invitations.Remove(invitation);
         await db.SaveChangesAsync(ct);
     }
@@ -98,11 +96,6 @@ public class InvitationService(
 
     public async Task<AuthResponse> AcceptAsync(AcceptInvitationRequest request, CancellationToken ct)
     {
-        if (request.Password.Length < 8)
-            throw new InvalidOperationException("Password must be at least 8 characters.");
-        if (string.IsNullOrWhiteSpace(request.FullName))
-            throw new InvalidOperationException("Your name is required.");
-
         var invitation = await FindPendingAsync(request.Token, ct)
             ?? throw new InvalidOperationException("This invitation is invalid or has expired.");
 
@@ -120,26 +113,31 @@ public class InvitationService(
         invitation.AcceptedAtUtc = DateTime.UtcNow;
 
         db.Users.Add(user);
+        // No signed-in caller here, so write the entry directly with the new member as the actor.
+        db.ActivityLog.Add(new ActivityEntry
+        {
+            TenantId = user.TenantId,
+            ActorUserId = user.Id,
+            ActorName = user.FullName,
+            Action = "invitation.accepted",
+            EntityType = "User",
+            EntityId = user.Id,
+            Summary = $"{user.FullName} joined as {user.Role}"
+        });
         await db.SaveChangesAsync(ct);
 
-        return new AuthResponse(jwt.CreateToken(user), user.TenantId, user.Email, user.FullName, user.Role);
+        return await auth.IssueAsync(user, ct);
     }
 
     /// <summary>Unauthenticated lookup: the secret token is the credential, so we search across tenants by hash.</summary>
     private Task<Invitation?> FindPendingAsync(string token, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(token)) return Task.FromResult<Invitation?>(null);
-        var hash = Hash(token.Trim());
+        var hash = TokenHasher.Hash(token.Trim());
         var now = DateTime.UtcNow;
         return db.Invitations.IgnoreQueryFilters()
             .FirstOrDefaultAsync(i => i.TokenHash == hash && i.AcceptedAtUtc == null && i.ExpiresAtUtc > now, ct);
     }
 
     private static InvitationDto ToDto(Invitation i) => new(i.Id, i.Email, i.Role, i.ExpiresAtUtc, i.IsPending);
-
-    private static string WebSafeToken() =>
-        Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-    private static string Hash(string token) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 }

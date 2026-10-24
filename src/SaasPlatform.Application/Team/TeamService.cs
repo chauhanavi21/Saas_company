@@ -4,7 +4,7 @@ using SaasPlatform.Domain.Common;
 
 namespace SaasPlatform.Application.Team;
 
-public record TeamMemberDto(Guid Id, string Email, string FullName, string Role);
+public record TeamMemberDto(Guid Id, string Email, string FullName, string Role, DateTime JoinedAtUtc);
 public record ChangeRoleRequest(string Role);
 
 public interface ITeamService
@@ -15,12 +15,12 @@ public interface ITeamService
 }
 
 /// <summary>All queries here are automatically scoped to the caller's tenant by the global query filter.</summary>
-public class TeamService(IApplicationDbContext db, ICurrentUser currentUser) : ITeamService
+public class TeamService(IApplicationDbContext db, ICurrentUser currentUser, IActivityRecorder activity) : ITeamService
 {
     public Task<List<TeamMemberDto>> ListAsync(CancellationToken ct) =>
         db.Users
             .OrderBy(u => u.FullName)
-            .Select(u => new TeamMemberDto(u.Id, u.Email, u.FullName, u.Role))
+            .Select(u => new TeamMemberDto(u.Id, u.Email, u.FullName, u.Role, u.CreatedAtUtc))
             .ToListAsync(ct);
 
     public async Task<TeamMemberDto> ChangeRoleAsync(Guid userId, string role, CancellationToken ct)
@@ -35,8 +35,9 @@ public class TeamService(IApplicationDbContext db, ICurrentUser currentUser) : I
             await EnsureAnotherAdminExistsAsync(user.Id, ct);
 
         user.Role = role;
+        activity.Record("member.role_changed", "User", user.Id, $"{user.FullName} is now {role}");
         await db.SaveChangesAsync(ct);
-        return new TeamMemberDto(user.Id, user.Email, user.FullName, user.Role);
+        return new TeamMemberDto(user.Id, user.Email, user.FullName, user.Role, user.CreatedAtUtc);
     }
 
     public async Task RemoveAsync(Guid userId, CancellationToken ct)
@@ -50,6 +51,15 @@ public class TeamService(IApplicationDbContext db, ICurrentUser currentUser) : I
         if (user.Role == Roles.Admin)
             await EnsureAnotherAdminExistsAsync(user.Id, ct);
 
+        // Work assigned to them goes back to the pool instead of dangling on a person who can't see it.
+        var assigned = await db.Tasks.Where(t => t.AssigneeUserId == userId).ToListAsync(ct);
+        foreach (var t in assigned) t.AssigneeUserId = null;
+
+        // End their sessions so a removed person can't keep refreshing into the company.
+        var sessions = await db.RefreshTokens.Where(r => r.UserId == userId && r.RevokedAtUtc == null).ToListAsync(ct);
+        foreach (var s in sessions) s.RevokedAtUtc = DateTime.UtcNow;
+
+        activity.Record("member.removed", "User", user.Id, user.FullName);
         db.Users.Remove(user);
         await db.SaveChangesAsync(ct);
     }
