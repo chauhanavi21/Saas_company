@@ -11,6 +11,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectTask> Tasks => Set<ProjectTask>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -36,6 +38,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant
             e.Property(i => i.Role).HasMaxLength(50);
             e.HasOne<Tenant>().WithMany().HasForeignKey(i => i.TenantId);
             e.HasQueryFilter(i => i.TenantId == currentTenant.TenantId);
+        });
+
+        b.Entity<Project>(e =>
+        {
+            e.Property(p => p.Name).HasMaxLength(200);
+            e.Property(p => p.Description).HasMaxLength(2000);
+            e.HasIndex(p => p.TenantId);
+            e.HasOne<Tenant>().WithMany().HasForeignKey(p => p.TenantId);
+            e.HasMany(p => p.Tasks).WithOne().HasForeignKey(t => t.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasQueryFilter(p => p.TenantId == currentTenant.TenantId);
+        });
+
+        b.Entity<ProjectTask>(e =>
+        {
+            e.ToTable("Tasks");
+            e.Property(t => t.Title).HasMaxLength(300);
+            e.Property(t => t.Description).HasMaxLength(4000);
+            e.Property(t => t.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(t => new { t.ProjectId, t.Status });
+            e.HasQueryFilter(t => t.TenantId == currentTenant.TenantId);
         });
     }
 

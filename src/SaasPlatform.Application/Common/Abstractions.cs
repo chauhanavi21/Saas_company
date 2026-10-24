@@ -8,6 +8,8 @@ public interface IApplicationDbContext
     DbSet<Tenant> Tenants { get; }
     DbSet<AppUser> Users { get; }
     DbSet<Invitation> Invitations { get; }
+    DbSet<Project> Projects { get; }
+    DbSet<ProjectTask> Tasks { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 
