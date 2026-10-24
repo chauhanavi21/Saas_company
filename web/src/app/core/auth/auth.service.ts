@@ -31,6 +31,13 @@ export class AuthService {
   readonly session = this._session.asReadonly();
   readonly isAuthenticated = computed(() => this._session() !== null);
   readonly token = computed(() => this._session()?.token ?? null);
+  readonly isAdmin = computed(() => this._session()?.role === 'Admin');
+
+  acceptInvite(token: string, fullName: string, password: string) {
+    return this.http
+      .post<AuthResponse>(`${environment.apiUrl}/invitations/accept`, { token, fullName, password })
+      .pipe(tap((res) => this.setSession(res)));
+  }
 
   login(email: string, password: string) {
     return this.http
