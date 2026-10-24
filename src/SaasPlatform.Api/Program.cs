@@ -60,7 +60,7 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     using var scope = app.Services.CreateScope();
-    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated(); // replace with migrations later
+    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate(); // applies pending EF Core migrations
 }
 
 app.UseCors();
