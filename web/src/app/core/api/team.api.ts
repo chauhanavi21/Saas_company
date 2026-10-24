@@ -9,6 +9,7 @@ export interface TeamMember {
   email: string;
   fullName: string;
   role: Role;
+  joinedAtUtc: string;
 }
 
 export interface Invitation {
