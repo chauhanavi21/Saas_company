@@ -55,11 +55,17 @@ dotnet build   # rebuild BEFORE running with --no-build, or the app won't see th
 
 | Area | What it does |
 |---|---|
-| Auth | Register a company (creates a tenant + first Admin), login, JWT |
+| Auth | Register a company (creates a tenant + first Admin), login. Access tokens last 15 minutes; a rotating refresh token (14 days, stored hashed) renews them silently. Replaying a used refresh token revokes every session for that user. Changing your password signs out every other device |
+| Rate limiting | Built into ASP.NET Core (no external service): login, register, refresh and invite endpoints allow 10 attempts per minute per client IP, configurable under `RateLimiting` in appsettings |
+| Validation | FluentValidation rules for every request. The API returns field-level errors that the forms show under each input |
 | Roles | `Admin` and `Member`. Admins manage people and can delete projects; Members can create and edit work. Enforced on the API, mirrored in the UI |
-| Team | List members; admins change roles and remove people. A company always keeps at least one admin |
+| Team | List members; admins change roles and remove people. A company always keeps at least one admin. Removing someone ends their sessions and unassigns their tasks |
 | Invitations | Admin creates an invite and gets a one-time link to share by hand (email is postponed). Only a SHA-256 hash of the token is stored; links expire in 7 days and work once |
-| Projects and tasks | Per-company projects with a To do / In progress / Done board, assignees, due dates, archive. Tasks can only be assigned to people in the same company |
+| Projects and tasks | Per-company projects with a drag-and-drop To do / In progress / Done board, priority, assignees, due dates and overdue flags, task comments, search and filters, archive |
+| Dashboard | Open and overdue counts, work finished this week, "my tasks", progress, and a live activity feed |
+| Activity feed | Append-only record of who did what, shown newest first |
+| Settings | Edit your profile, rename the company (admins), choose light / dark / system theme, change password |
+| UI | Angular 21 standalone components and signals, Tailwind 3.4 with a semantic token system, dark mode, toasts, accessible confirm dialogs, loading skeletons |
 
 ## How multi-tenancy works
 
@@ -74,16 +80,17 @@ dotnet build   # rebuild BEFORE running with --no-build, or the app won't see th
 - Switch SQLite to SQL Server or PostgreSQL: change the EF provider package and `UseSqlite` in
   `Infrastructure/DependencyInjection.cs`, plus the connection string
 - Set `Jwt:Key` via user-secrets or environment variables, never in committed files
-- Refresh tokens, FluentValidation, rate limiting, automated tests
-- Opening an invite link while already signed in redirects to the dashboard (the `/auth` routes are guest-only)
+- Upgrade Angular 21 to 22: `cd web && npx ng update @angular/core@22 @angular/cli@22`
+- Rate-limit counters are in memory, so they reset on restart and aren't shared between several server instances
+- Access tokens can't be revoked before they expire (up to 15 minutes); refresh tokens can
+- Browser-level (end-to-end) tests for the UI
 - **Third-party integrations come last**, after the core product is done: Stripe billing, email delivery and verification, hosted logging/monitoring (e.g. Serilog sinks), and anything else that calls an external service. Until then, features that need them use local stand-ins behind an interface.
 
 ## Status
 
 - Backend: `dotnet build` passes with 0 warnings and 0 errors (.NET SDK 10.0.402).
 - Frontend: `npm install && npm run build` passes.
-- API verified by running it against two companies: auth, role enforcement (403 for members on admin actions), last-admin protection, the full invite flow (single use, revoke, cross-company isolation), projects and tasks including cross-company 404s and cross-company assignee rejection, archive, and cascade delete.
-- UI verified in a browser earlier: register and the dashboard. The Team, Projects, project board, accept-invite pages and the new dashboard compile under strict template checking but have **not yet been clicked through in a browser**.
-- Not yet verified: sign out and back in, and the token-expiry (401) logout.
-- There are no automated tests yet; the API checks above were run by hand against a live server.
+- **68 automated xUnit tests pass** (`dotnet test`). They start the real API in memory against SQLite and cover tenant isolation (including a mutation check: removing a query filter makes 7 tests fail), roles and the last-admin rule, the invite lifecycle (expiry, reuse, revoke, hashed storage), refresh rotation and theft detection, password change, rate limiting, validation, projects, tasks, comments, dashboard numbers and the activity feed.
+- Verified against the running servers: CORS preflight for every endpoint the browser uses, and the 401 → refresh → retry sequence the Angular interceptor relies on.
+- **Not verified in a browser:** the redesigned Angular pages build under strict template checking and match the live API's response shapes, but nobody has clicked through them yet. The registration and dashboard flow was confirmed in a browser before the redesign.
 - `Directory.Packages.props` pins some transitive packages (OpenApi, SQLite native lib, Pkcs) to patched versions. Keep those pins in sync with the main packages when upgrading.
