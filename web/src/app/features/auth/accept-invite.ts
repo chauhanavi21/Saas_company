@@ -1,60 +1,61 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject, input, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { InvitationPreview, TeamApi } from '../../core/api/team.api';
 import { AuthService } from '../../core/auth/auth.service';
+import { messageOf } from '../../core/ui/errors';
+import { AuthLayout } from './auth-layout';
 
 @Component({
   selector: 'app-accept-invite',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, AuthLayout],
   template: `
-    <div class="flex min-h-screen items-center justify-center px-4">
+    <app-auth-layout>
       @if (state() === 'loading') {
-        <p class="text-slate-500">Checking your invitation…</p>
+        <div class="space-y-3" aria-busy="true">
+          <div class="skeleton h-8 w-3/4"></div>
+          <div class="skeleton h-4 w-full"></div>
+          <div class="skeleton h-10 w-full"></div>
+        </div>
       } @else if (state() === 'invalid') {
-        <div class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <h1 class="text-xl font-bold">Invitation unavailable</h1>
-          <p class="mt-2 text-sm text-slate-500">This link is invalid, already used, or has expired. Ask your admin for a new one.</p>
-          <a routerLink="/auth/login" class="mt-4 inline-block text-sm font-medium text-brand-600 hover:underline">Go to sign in</a>
+        <div>
+          <h1 class="page-title">Invitation unavailable</h1>
+          <p class="page-sub">This link is invalid, already used, or has expired. Ask your admin for a new one.</p>
+          <a routerLink="/auth/login" class="btn-secondary mt-6">Go to sign in</a>
         </div>
       } @else {
-        <form
-          [formGroup]="form"
-          (ngSubmit)="submit()"
-          class="w-full max-w-sm space-y-5 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
-        >
+        <form [formGroup]="form" (ngSubmit)="submit()" class="space-y-5" novalidate>
           <div>
-            <h1 class="text-2xl font-bold">Join {{ preview()?.companyName }}</h1>
-            <p class="mt-1 text-sm text-slate-500">
-              You've been invited as <strong>{{ preview()?.role }}</strong> using {{ preview()?.email }}.
+            <h1 class="page-title">Join {{ preview()?.companyName }}</h1>
+            <p class="page-sub">
+              You've been invited as <span class="badge-brand">{{ preview()?.role }}</span> using {{ preview()?.email }}.
             </p>
           </div>
 
           @if (error()) {
-            <p class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{{ error() }}</p>
+            <p class="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger" role="alert">{{ error() }}</p>
           }
 
-          <label class="block text-sm font-medium">
-            Your name
-            <input class="input mt-1" formControlName="fullName" autocomplete="name" />
-          </label>
-          <label class="block text-sm font-medium">
-            Choose a password
-            <input class="input mt-1" type="password" formControlName="password" autocomplete="new-password" />
-            <span class="mt-1 block text-xs text-slate-500">At least 8 characters.</span>
-          </label>
+          <div>
+            <label class="label" for="name">Your name</label>
+            <input id="name" class="input" formControlName="fullName" autocomplete="name" />
+          </div>
+          <div>
+            <label class="label" for="password">Choose a password</label>
+            <input id="password" class="input" type="password" formControlName="password" autocomplete="new-password" />
+            <p class="hint">At least 8 characters.</p>
+          </div>
 
-          <button class="btn-primary" type="submit" [disabled]="form.invalid || loading()">
+          <button class="btn-primary btn-block" type="submit" [disabled]="form.invalid || loading()">
             {{ loading() ? 'Joining…' : 'Join workspace' }}
           </button>
         </form>
       }
-    </div>
+    </app-auth-layout>
   `,
 })
 export class AcceptInvite implements OnInit {
-  /** Bound from the ?token= query string (withComponentInputBinding). */
+  /** Bound from the ?token= query string. */
   readonly token = input<string>('');
 
   private readonly fb = inject(FormBuilder);
@@ -73,6 +74,9 @@ export class AcceptInvite implements OnInit {
   });
 
   ngOnInit() {
+    // Someone already signed in who opens an invite link must sign out first, or they'd be switched silently.
+    if (this.auth.isAuthenticated()) this.auth.clear();
+
     const token = this.token();
     if (!token) {
       this.state.set('invalid');
@@ -88,14 +92,14 @@ export class AcceptInvite implements OnInit {
   }
 
   protected submit() {
-    if (this.form.invalid) return;
+    if (this.form.invalid || this.loading()) return;
     this.loading.set(true);
     this.error.set(null);
     const { fullName, password } = this.form.getRawValue();
     this.auth.acceptInvite(this.token(), fullName, password).subscribe({
       next: () => this.router.navigate(['/dashboard']),
-      error: (e: HttpErrorResponse) => {
-        this.error.set((e.error?.title as string | undefined) ?? 'Something went wrong. Try again.');
+      error: (e) => {
+        this.error.set(messageOf(e));
         this.loading.set(false);
       },
     });
