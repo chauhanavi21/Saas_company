@@ -17,6 +17,24 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant
     public DbSet<ActivityEntry> ActivityLog => Set<ActivityEntry>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
+    /// <summary>
+    /// SQLite hands back DateTime values with an unspecified kind, which serialise to JSON without a "Z" and get read
+    /// as local time by browsers. Everything we store is UTC, so mark it as such on the way out.
+    /// </summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder builder)
+    {
+        builder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+        builder.Properties<DateTime?>().HaveConversion<NullableUtcDateTimeConverter>();
+    }
+
+    private sealed class UtcDateTimeConverter() : Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
+        v => v.Kind == DateTimeKind.Utc ? v : v.ToUniversalTime(),
+        v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+
+    private sealed class NullableUtcDateTimeConverter() : Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime?, DateTime?>(
+        v => v == null ? v : (v.Value.Kind == DateTimeKind.Utc ? v : v.Value.ToUniversalTime()),
+        v => v == null ? v : DateTime.SpecifyKind(v.Value, DateTimeKind.Utc));
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<Tenant>(e =>

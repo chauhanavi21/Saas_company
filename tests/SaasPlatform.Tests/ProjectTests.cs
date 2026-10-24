@@ -202,6 +202,22 @@ public class ProjectTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Timestamps_are_sent_as_UTC_with_a_Z_so_browsers_do_not_read_them_as_local_time()
+    {
+        var admin = await factory.RegisterCompany();
+        var pid = await NewProject(admin);
+        await NewTask(admin, pid, new { title = "T" });
+
+        foreach (var url in new[] { "/api/projects", "/api/activity", "/api/team" })
+        {
+            var text = await (await admin.Get(url)).Text();
+            var stamps = System.Text.RegularExpressions.Regex.Matches(text, "\"(createdAtUtc|atUtc|joinedAtUtc)\":\"([^\"]+)\"");
+            Assert.NotEmpty(stamps);
+            Assert.All(stamps, m => Assert.EndsWith("Z", m.Groups[2].Value));
+        }
+    }
+
+    [Fact]
     public async Task Activity_feed_records_who_did_what_newest_first()
     {
         var admin = await factory.RegisterCompany();
