@@ -25,6 +25,12 @@ public class CurrentTenant(IHttpContextAccessor accessor) : ICurrentTenant
         Guid.TryParse(accessor.HttpContext?.User.FindFirstValue("tenant_id"), out var id) ? id : null;
 }
 
+public class CurrentUser(IHttpContextAccessor accessor) : ICurrentUser
+{
+    public Guid? UserId =>
+        Guid.TryParse(accessor.HttpContext?.User.FindFirstValue(JwtRegisteredClaimNames.Sub), out var id) ? id : null;
+}
+
 public class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenService
 {
     public string CreateToken(AppUser user)

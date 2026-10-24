@@ -7,6 +7,7 @@ public interface IApplicationDbContext
 {
     DbSet<Tenant> Tenants { get; }
     DbSet<AppUser> Users { get; }
+    DbSet<Invitation> Invitations { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 
@@ -14,6 +15,12 @@ public interface IApplicationDbContext
 public interface ICurrentTenant
 {
     Guid? TenantId { get; }
+}
+
+/// <summary>The authenticated user making the current request (from the JWT "sub" claim).</summary>
+public interface ICurrentUser
+{
+    Guid? UserId { get; }
 }
 
 public interface IJwtTokenService
