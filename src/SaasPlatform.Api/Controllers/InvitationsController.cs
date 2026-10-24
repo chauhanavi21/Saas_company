@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using SaasPlatform.Api.Infrastructure;
 using SaasPlatform.Application.Auth;
 using SaasPlatform.Application.Team;
 using SaasPlatform.Domain.Common;
@@ -31,6 +33,7 @@ public class InvitationsController(IInvitationService invitations) : ControllerB
     /// <summary>Public: lets the invite page show the company name before the invitee signs up.</summary>
     [HttpGet("preview")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimiting.Auth)] // stops guessing of invite tokens
     public async Task<ActionResult<InvitationPreviewDto>> Preview([FromQuery] string token, CancellationToken ct)
     {
         var preview = await invitations.PreviewAsync(token, ct);
@@ -39,6 +42,7 @@ public class InvitationsController(IInvitationService invitations) : ControllerB
 
     [HttpPost("accept")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimiting.Auth)]
     public async Task<ActionResult<AuthResponse>> Accept(AcceptInvitationRequest request, CancellationToken ct)
         => Ok(await invitations.AcceptAsync(request, ct));
 }

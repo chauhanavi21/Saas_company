@@ -5,15 +5,16 @@ using SaasPlatform.Domain.Common;
 
 namespace SaasPlatform.Api.Controllers;
 
-/// <summary>Members can create and edit; only admins can delete.</summary>
+/// <summary>Members can create and edit; only admins can delete a project.</summary>
 [ApiController]
 [Authorize]
 [Route("api/projects")]
 public class ProjectsController(IProjectService projects) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<List<ProjectDto>>> List([FromQuery] bool includeArchived, CancellationToken ct)
-        => Ok(await projects.ListAsync(includeArchived, ct));
+    public async Task<ActionResult<List<ProjectDto>>> List(
+        [FromQuery] bool includeArchived, [FromQuery] string? search, CancellationToken ct)
+        => Ok(await projects.ListAsync(includeArchived, search, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ProjectDto>> Get(Guid id, CancellationToken ct)
@@ -53,8 +54,10 @@ public class ProjectsController(IProjectService projects) : ControllerBase
     }
 
     [HttpGet("{id:guid}/tasks")]
-    public async Task<ActionResult<List<TaskDto>>> ListTasks(Guid id, CancellationToken ct)
-        => Ok(await projects.ListTasksAsync(id, ct));
+    public async Task<ActionResult<List<TaskDto>>> ListTasks(
+        Guid id, [FromQuery] string? search, [FromQuery] string? status,
+        [FromQuery] Guid? assignee, [FromQuery] bool mine, CancellationToken ct)
+        => Ok(await projects.ListTasksAsync(id, new TaskQuery(search, status, assignee, mine), ct));
 
     [HttpPost("{id:guid}/tasks")]
     public async Task<ActionResult<TaskDto>> CreateTask(Guid id, CreateTaskRequest request, CancellationToken ct)
@@ -68,6 +71,21 @@ public class ProjectsController(IProjectService projects) : ControllerBase
     public async Task<IActionResult> DeleteTask(Guid id, Guid taskId, CancellationToken ct)
     {
         await projects.DeleteTaskAsync(id, taskId, ct);
+        return NoContent();
+    }
+
+    [HttpGet("{id:guid}/tasks/{taskId:guid}/comments")]
+    public async Task<ActionResult<List<CommentDto>>> ListComments(Guid id, Guid taskId, CancellationToken ct)
+        => Ok(await projects.ListCommentsAsync(id, taskId, ct));
+
+    [HttpPost("{id:guid}/tasks/{taskId:guid}/comments")]
+    public async Task<ActionResult<CommentDto>> AddComment(Guid id, Guid taskId, AddCommentRequest request, CancellationToken ct)
+        => Ok(await projects.AddCommentAsync(id, taskId, request.Body, ct));
+
+    [HttpDelete("{id:guid}/tasks/{taskId:guid}/comments/{commentId:guid}")]
+    public async Task<IActionResult> DeleteComment(Guid id, Guid taskId, Guid commentId, CancellationToken ct)
+    {
+        await projects.DeleteCommentAsync(id, taskId, commentId, ct);
         return NoContent();
     }
 }
