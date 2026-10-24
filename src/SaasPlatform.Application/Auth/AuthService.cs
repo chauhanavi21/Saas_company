@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SaasPlatform.Application.Common;
+using SaasPlatform.Domain.Common;
 using SaasPlatform.Domain.Entities;
 
 namespace SaasPlatform.Application.Auth;
@@ -40,7 +41,7 @@ public class AuthService(IApplicationDbContext db, IPasswordHasher hasher, IJwtT
             Email = email,
             FullName = request.FullName.Trim(),
             PasswordHash = hasher.Hash(request.Password),
-            Role = "Admin"
+            Role = Roles.Admin
         };
 
         db.Tenants.Add(tenant);
