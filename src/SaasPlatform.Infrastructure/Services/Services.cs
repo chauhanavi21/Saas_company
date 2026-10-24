@@ -16,7 +16,8 @@ public class JwtSettings
     public string Issuer { get; set; } = "SaasPlatform";
     public string Audience { get; set; } = "SaasPlatform.Web";
     public string Key { get; set; } = string.Empty;
-    public int ExpiryMinutes { get; set; } = 60;
+    /// <summary>Access tokens are short-lived; the client silently swaps them using the refresh token.</summary>
+    public int ExpiryMinutes { get; set; } = 15;
 }
 
 public class CurrentTenant(IHttpContextAccessor accessor) : ICurrentTenant
@@ -25,10 +26,14 @@ public class CurrentTenant(IHttpContextAccessor accessor) : ICurrentTenant
         Guid.TryParse(accessor.HttpContext?.User.FindFirstValue("tenant_id"), out var id) ? id : null;
 }
 
-public class CurrentUser(IHttpContextAccessor accessor) : ICurrentUser
+public class CurrentUser(IHttpContextAccessor accessor) : ICurrentUser, ICurrentUserName
 {
+    public string? DisplayName => accessor.HttpContext?.User.FindFirstValue("name");
+
     public Guid? UserId =>
         Guid.TryParse(accessor.HttpContext?.User.FindFirstValue(JwtRegisteredClaimNames.Sub), out var id) ? id : null;
+
+    public string? Role => accessor.HttpContext?.User.FindFirstValue("role");
 }
 
 public class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenService
@@ -41,6 +46,7 @@ public class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenService
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, user.Email),
+            new Claim("name", user.FullName),
             new Claim("tenant_id", user.TenantId.ToString()),
             new Claim("role", user.Role)
         };

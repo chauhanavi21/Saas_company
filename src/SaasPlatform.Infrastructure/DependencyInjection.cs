@@ -18,7 +18,10 @@ public static class DependencyInjection
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
         services.AddScoped<ICurrentTenant, CurrentTenant>();
-        services.AddScoped<ICurrentUser, CurrentUser>();
+        services.AddScoped<CurrentUser>();
+        services.AddScoped<ICurrentUser>(sp => sp.GetRequiredService<CurrentUser>());
+        services.AddScoped<ICurrentUserName>(sp => sp.GetRequiredService<CurrentUser>());
+        services.AddScoped<IActivityRecorder, ActivityRecorder>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         return services;

@@ -13,6 +13,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectTask> Tasks => Set<ProjectTask>();
+    public DbSet<TaskComment> TaskComments => Set<TaskComment>();
+    public DbSet<ActivityEntry> ActivityLog => Set<ActivityEntry>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -56,8 +59,38 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant
             e.Property(t => t.Title).HasMaxLength(300);
             e.Property(t => t.Description).HasMaxLength(4000);
             e.Property(t => t.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(t => t.Priority).HasConversion<string>().HasMaxLength(20).HasDefaultValue(TaskPriority.Medium);
             e.HasIndex(t => new { t.ProjectId, t.Status });
+            e.HasIndex(t => t.AssigneeUserId);
             e.HasQueryFilter(t => t.TenantId == currentTenant.TenantId);
+        });
+
+        b.Entity<TaskComment>(e =>
+        {
+            e.Property(c => c.Body).HasMaxLength(2000);
+            e.Property(c => c.AuthorName).HasMaxLength(200);
+            e.HasIndex(c => c.TaskId);
+            e.HasOne<ProjectTask>().WithMany().HasForeignKey(c => c.TaskId).OnDelete(DeleteBehavior.Cascade);
+            e.HasQueryFilter(c => c.TenantId == currentTenant.TenantId);
+        });
+
+        b.Entity<ActivityEntry>(e =>
+        {
+            e.Property(a => a.ActorName).HasMaxLength(200);
+            e.Property(a => a.Action).HasMaxLength(60);
+            e.Property(a => a.EntityType).HasMaxLength(40);
+            e.Property(a => a.Summary).HasMaxLength(500);
+            e.HasIndex(a => new { a.TenantId, a.CreatedAtUtc });
+            e.HasQueryFilter(a => a.TenantId == currentTenant.TenantId);
+        });
+
+        // Refresh tokens are looked up by their secret hash before any tenant is known, so they carry no tenant filter.
+        b.Entity<RefreshToken>(e =>
+        {
+            e.HasIndex(r => r.TokenHash).IsUnique();
+            e.HasIndex(r => r.UserId);
+            e.Property(r => r.TokenHash).HasMaxLength(64);
+            e.Property(r => r.ReplacedByTokenHash).HasMaxLength(64);
         });
     }
 
