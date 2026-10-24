@@ -10,8 +10,13 @@ namespace SaasPlatform.Application.Validation;
 
 internal static class Rules
 {
+    /// <summary>The built-in check accepts "user@host" with no dot, which can never receive mail, so we require a dotted domain.</summary>
     public static IRuleBuilderOptions<T, string> Email<T>(this IRuleBuilder<T, string> rule) =>
-        rule.NotEmpty().MaximumLength(320).EmailAddress().WithMessage("Enter a valid email address.");
+        rule.NotEmpty().WithMessage("Email is required.")
+            .MaximumLength(320)
+            .EmailAddress()
+            .Must(e => e.Split('@')[^1].Contains('.') && !e.Split('@')[^1].EndsWith('.') && !e.Contains(' '))
+            .WithMessage("Enter a valid email address.");
 
     /// <summary>At least 8 characters, no longer than 128 (long inputs make PBKDF2 an easy DoS target).</summary>
     public static IRuleBuilderOptions<T, string> NewPassword<T>(this IRuleBuilder<T, string> rule) =>
