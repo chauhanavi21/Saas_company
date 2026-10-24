@@ -10,6 +10,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant
 {
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<AppUser> Users => Set<AppUser>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -26,6 +27,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant
             e.HasOne<Tenant>().WithMany().HasForeignKey(u => u.TenantId);
             // Row-level tenant isolation: every query is scoped to the caller's tenant.
             e.HasQueryFilter(u => u.TenantId == currentTenant.TenantId);
+        });
+
+        b.Entity<Invitation>(e =>
+        {
+            e.HasIndex(i => i.TokenHash).IsUnique();
+            e.Property(i => i.Email).HasMaxLength(320);
+            e.Property(i => i.Role).HasMaxLength(50);
+            e.HasOne<Tenant>().WithMany().HasForeignKey(i => i.TenantId);
+            e.HasQueryFilter(i => i.TenantId == currentTenant.TenantId);
         });
     }
 
