@@ -4,4 +4,5 @@ export const AUTH_ROUTES: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'login' },
   { path: 'login', loadComponent: () => import('./login').then((m) => m.Login) },
   { path: 'register', loadComponent: () => import('./register').then((m) => m.Register) },
+  { path: 'accept-invite', loadComponent: () => import('./accept-invite').then((m) => m.AcceptInvite) },
 ];
