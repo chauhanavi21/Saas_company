@@ -8,5 +8,5 @@ public class AppUser : BaseEntity, ITenantScoped
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
     public string FullName { get; set; } = string.Empty;
-    public string Role { get; set; } = "Member";
+    public string Role { get; set; } = Roles.Member;
 }
