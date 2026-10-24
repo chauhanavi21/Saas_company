@@ -49,9 +49,12 @@ var app = builder.Build();
 app.UseExceptionHandler(errorApp => errorApp.Run(async ctx =>
 {
     var ex = ctx.Features.Get<IExceptionHandlerFeature>()?.Error;
-    var (status, title) = ex is InvalidOperationException
-        ? (StatusCodes.Status400BadRequest, ex.Message)
-        : (StatusCodes.Status500InternalServerError, "An unexpected error occurred.");
+    var (status, title) = ex switch
+    {
+        InvalidOperationException => (StatusCodes.Status400BadRequest, ex.Message),
+        KeyNotFoundException => (StatusCodes.Status404NotFound, ex.Message),
+        _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred.")
+    };
     ctx.Response.StatusCode = status;
     await ctx.Response.WriteAsJsonAsync(new { status, title });
 }));
