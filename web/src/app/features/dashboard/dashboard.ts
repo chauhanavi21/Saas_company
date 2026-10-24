@@ -1,70 +1,147 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { Project, ProjectsApi } from '../../core/api/projects.api';
-import { TeamApi, TeamMember } from '../../core/api/team.api';
+import { Activity, Dashboard as DashboardData, InsightsApi } from '../../core/api/insights.api';
 import { AuthService } from '../../core/auth/auth.service';
+import { describeActivity, shortDate, timeAgo } from '../../core/ui/format';
+import { Icon } from '../../shared/icon';
 
 @Component({
   selector: 'app-dashboard',
-  imports: [RouterLink],
+  imports: [RouterLink, Icon],
   template: `
-    <div class="mx-auto max-w-4xl space-y-8">
-      <div>
-        <h1 class="text-2xl font-bold">Welcome, {{ auth.session()?.fullName }}</h1>
-        <p class="mt-1 text-slate-500">Your workspace is isolated from every other company.</p>
-      </div>
-
-      <div class="grid gap-4 sm:grid-cols-3">
-        <a routerLink="/projects" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:border-brand-500">
-          <p class="text-sm text-slate-500">Active projects</p>
-          <p class="mt-1 text-3xl font-bold">{{ projects().length }}</p>
-        </a>
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p class="text-sm text-slate-500">Open tasks</p>
-          <p class="mt-1 text-3xl font-bold">{{ openTasks() }}</p>
+    <div class="mx-auto max-w-6xl space-y-6">
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 class="page-title">{{ greeting() }}, {{ firstName() }}</h1>
+          <p class="page-sub">Here's what's happening in {{ auth.session()?.companyName }}.</p>
         </div>
-        <a routerLink="/team" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:border-brand-500">
-          <p class="text-sm text-slate-500">Team members</p>
-          <p class="mt-1 text-3xl font-bold">{{ team().length }}</p>
-        </a>
+        <a routerLink="/projects" class="btn-primary"><app-icon name="plus" [size]="16" /> New project</a>
       </div>
 
-      <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 class="text-lg font-semibold">Recent projects</h2>
-        <ul class="mt-4 divide-y divide-slate-100">
-          @for (p of recent(); track p.id) {
-            <li>
-              <a [routerLink]="['/projects', p.id]" class="flex items-center justify-between py-3 hover:text-brand-600">
-                <span class="font-medium">{{ p.name }}</span>
-                <span class="text-sm text-slate-500">{{ p.doneCount }}/{{ p.taskCount }} done</span>
-              </a>
-            </li>
-          } @empty {
-            <li class="py-3 text-sm text-slate-500">No projects yet. <a routerLink="/projects" class="text-brand-600 hover:underline">Create one</a>.</li>
+      @if (!data()) {
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-busy="true">
+          @for (i of [1, 2, 3, 4]; track i) { <div class="skeleton h-28"></div> }
+        </div>
+      } @else {
+        <div class="grid animate-fade-up gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          @for (s of stats(); track s.label) {
+            <a [routerLink]="s.link" class="card-pad block transition hover:border-brand">
+              <div class="flex items-center justify-between">
+                <p class="text-sm text-muted">{{ s.label }}</p>
+                <span class="grid h-8 w-8 place-items-center rounded-lg" [class]="s.tone"><app-icon [name]="s.icon" [size]="16" /></span>
+              </div>
+              <p class="mt-2 text-3xl font-bold tracking-tight">{{ s.value }}</p>
+              <p class="mt-1 text-xs text-muted">{{ s.hint }}</p>
+            </a>
           }
-        </ul>
-      </section>
+        </div>
+
+        <div class="grid gap-6 lg:grid-cols-3">
+          <section class="card-pad lg:col-span-2">
+            <h2 class="font-semibold">My open tasks</h2>
+            <ul class="mt-3 divide-y divide-line">
+              @for (t of data()!.myTasks; track t.id) {
+                <li>
+                  <a [routerLink]="['/projects', t.projectId]" class="flex items-center justify-between gap-3 py-3 hover:text-brand">
+                    <span class="min-w-0">
+                      <span class="block truncate text-sm font-medium">{{ t.title }}</span>
+                      <span class="block truncate text-xs text-muted">{{ t.projectName }}</span>
+                    </span>
+                    <span class="flex shrink-0 items-center gap-2">
+                      @if (t.priority === 'High') { <span class="badge-danger">High</span> }
+                      @if (t.dueDate) {
+                        <span [class]="t.isOverdue ? 'badge-danger' : 'badge-neutral'">
+                          <app-icon name="calendar" [size]="12" /> {{ date(t.dueDate) }}
+                        </span>
+                      }
+                    </span>
+                  </a>
+                </li>
+              } @empty {
+                <li class="py-8 text-center text-sm text-muted">Nothing assigned to you. Enjoy the quiet.</li>
+              }
+            </ul>
+          </section>
+
+          <section class="card-pad">
+            <h2 class="font-semibold">Task progress</h2>
+            <div class="mt-4 flex h-3 overflow-hidden rounded-full bg-subtle" role="img" [attr.aria-label]="progressLabel()">
+              @for (seg of segments(); track seg.status) {
+                <div [style.width.%]="seg.pct" [class]="seg.color"></div>
+              }
+            </div>
+            <ul class="mt-4 space-y-2 text-sm">
+              @for (seg of segments(); track seg.status) {
+                <li class="flex items-center justify-between">
+                  <span class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full" [class]="seg.color"></span>{{ seg.label }}</span>
+                  <span class="font-medium">{{ seg.count }}</span>
+                </li>
+              }
+            </ul>
+          </section>
+        </div>
+
+        <section class="card-pad">
+          <h2 class="font-semibold">Recent activity</h2>
+          <ul class="mt-3 divide-y divide-line">
+            @for (a of activity(); track a.id) {
+              <li class="flex items-start justify-between gap-4 py-3">
+                <p class="text-sm">{{ describe(a) }}</p>
+                <time class="shrink-0 text-xs text-muted" [attr.datetime]="a.atUtc">{{ ago(a.atUtc) }}</time>
+              </li>
+            } @empty {
+              <li class="py-6 text-center text-sm text-muted">No activity yet.</li>
+            }
+          </ul>
+        </section>
+      }
     </div>
   `,
 })
 export class Dashboard implements OnInit {
   protected readonly auth = inject(AuthService);
-  private readonly projectsApi = inject(ProjectsApi);
-  private readonly teamApi = inject(TeamApi);
+  private readonly api = inject(InsightsApi);
 
-  protected readonly projects = signal<Project[]>([]);
-  protected readonly team = signal<TeamMember[]>([]);
+  protected readonly data = signal<DashboardData | null>(null);
+  protected readonly activity = signal<Activity[]>([]);
+
+  protected readonly firstName = computed(() => this.auth.session()?.fullName.split(' ')[0] ?? '');
+  protected readonly greeting = computed(() => {
+    const h = new Date().getHours();
+    return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  });
+
+  protected readonly stats = computed(() => {
+    const d = this.data();
+    if (!d) return [];
+    return [
+      { label: 'Active projects', value: d.activeProjects, hint: 'Not archived', icon: 'folder', link: '/projects', tone: 'bg-brand-soft text-brand-ink' },
+      { label: 'Open tasks', value: d.openTasks, hint: 'To do and in progress', icon: 'check', link: '/projects', tone: 'bg-warning-soft text-warning' },
+      { label: 'Overdue', value: d.overdueTasks, hint: d.overdueTasks ? 'Past their due date' : 'All on track', icon: 'alert', link: '/projects', tone: d.overdueTasks ? 'bg-danger-soft text-danger' : 'bg-success-soft text-success' },
+      { label: 'Done this week', value: d.completedThisWeek, hint: 'Completed in the last 7 days', icon: 'activity', link: '/projects', tone: 'bg-success-soft text-success' },
+    ];
+  });
+
+  protected readonly segments = computed(() => {
+    const d = this.data();
+    if (!d) return [];
+    const total = d.tasksByStatus.reduce((n, s) => n + s.count, 0) || 1;
+    const meta: Record<string, { label: string; color: string }> = {
+      Todo: { label: 'To do', color: 'bg-muted/50' },
+      InProgress: { label: 'In progress', color: 'bg-brand' },
+      Done: { label: 'Done', color: 'bg-success' },
+    };
+    return d.tasksByStatus.map((s) => ({ ...s, ...meta[s.status]!, pct: (s.count / total) * 100 }));
+  });
+
+  protected readonly progressLabel = computed(() => this.segments().map((s) => `${s.label}: ${s.count}`).join(', '));
 
   ngOnInit() {
-    this.projectsApi.list().subscribe((p) => this.projects.set(p));
-    this.teamApi.list().subscribe((t) => this.team.set(t));
+    this.api.dashboard().subscribe((d) => this.data.set(d));
+    this.api.activity(8).subscribe((a) => this.activity.set(a));
   }
 
-  protected recent() {
-    return this.projects().slice(0, 5);
-  }
-
-  protected openTasks() {
-    return this.projects().reduce((sum, p) => sum + (p.taskCount - p.doneCount), 0);
-  }
+  protected describe = describeActivity;
+  protected ago = (iso: string) => timeAgo(iso);
+  protected date = shortDate;
 }
