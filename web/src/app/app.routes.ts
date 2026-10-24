@@ -17,6 +17,18 @@ export const routes: Routes = [
         path: 'dashboard',
         loadComponent: () => import('./features/dashboard/dashboard').then((m) => m.Dashboard),
       },
+      {
+        path: 'projects',
+        loadComponent: () => import('./features/projects/projects').then((m) => m.Projects),
+      },
+      {
+        path: 'projects/:id',
+        loadComponent: () => import('./features/projects/project-detail').then((m) => m.ProjectDetail),
+      },
+      {
+        path: 'team',
+        loadComponent: () => import('./features/team/team').then((m) => m.Team),
+      },
     ],
   },
   { path: '**', redirectTo: '' },
