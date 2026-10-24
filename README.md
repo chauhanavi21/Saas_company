@@ -56,7 +56,8 @@ Delete it to reset all data.
   `Infrastructure/DependencyInjection.cs`, plus the connection string
 - Replace `Database.EnsureCreated()` in `Program.cs` with EF Core migrations
 - Set `Jwt:Key` via user-secrets or environment variables, never in committed files
-- Refresh tokens, email verification, FluentValidation, rate limiting, Serilog, tests, Stripe billing
+- Refresh tokens, FluentValidation, rate limiting, tests
+- **Third-party integrations come last**, after the core product is done: Stripe billing, email delivery and verification, hosted logging/monitoring (e.g. Serilog sinks), and anything else that calls an external service. Until then, features that need them use local stand-ins behind an interface.
 
 ## Status
 
