@@ -5,4 +5,7 @@
     <Project Path="src/SaasPlatform.Infrastructure/SaasPlatform.Infrastructure.csproj" />
     <Project Path="src/SaasPlatform.Api/SaasPlatform.Api.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SaasPlatform.Tests/SaasPlatform.Tests.csproj" />
+  </Folder>
 </Solution>
