@@ -45,6 +45,7 @@ public class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenService
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")), // unique per token
             new Claim(JwtRegisteredClaimNames.Email, user.Email),
             new Claim("name", user.FullName),
             new Claim("tenant_id", user.TenantId.ToString()),
