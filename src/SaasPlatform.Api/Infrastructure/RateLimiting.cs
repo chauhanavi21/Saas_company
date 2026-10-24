@@ -3,6 +3,16 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace SaasPlatform.Api.Infrastructure;
 
+public class RateLimitSettings
+{
+    public const string Section = "RateLimiting";
+
+    /// <summary>Credential attempts (login, register, refresh, accept invite) allowed per client per window.</summary>
+    public int AuthPermitLimit { get; set; } = 10;
+    public int AuthWindowSeconds { get; set; } = 60;
+    public int GlobalPermitLimit { get; set; } = 600;
+}
+
 public static class RateLimiting
 {
     /// <summary>Policy for credential endpoints (login, register, refresh, accept invite).</summary>
@@ -11,30 +21,37 @@ public static class RateLimiting
     /// <summary>
     /// Built-in ASP.NET Core rate limiting, no external service. Limits are per client IP, using fixed windows.
     /// Counts are in memory, so they reset on restart and aren't shared across several server instances.
+    /// Settings are read through IOptions when the first request arrives, so configuration overrides always apply.
     /// </summary>
     public static IServiceCollection AddApiRateLimiting(this IServiceCollection services, IConfiguration config)
     {
-        var permit = config.GetValue("RateLimiting:AuthPermitLimit", 10);
-        var windowSeconds = config.GetValue("RateLimiting:AuthWindowSeconds", 60);
+        services.Configure<RateLimitSettings>(config.GetSection(RateLimitSettings.Section));
 
         services.AddRateLimiter(o =>
         {
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-            o.AddPolicy(Auth, ctx => RateLimitPartition.GetFixedWindowLimiter(
-                ClientKey(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = permit,
-                    Window = TimeSpan.FromSeconds(windowSeconds),
-                    QueueLimit = 0
-                }));
+            o.AddPolicy(Auth, ctx =>
+            {
+                var s = ctx.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<RateLimitSettings>>().Value;
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    ClientKey(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = s.AuthPermitLimit,
+                        Window = TimeSpan.FromSeconds(s.AuthWindowSeconds),
+                        QueueLimit = 0
+                    });
+            });
 
             // A generous ceiling for everything else so a runaway client can't hammer the API.
             o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
-                RateLimitPartition.GetFixedWindowLimiter(
+            {
+                var s = ctx.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<RateLimitSettings>>().Value;
+                return RateLimitPartition.GetFixedWindowLimiter(
                     "global:" + ClientKey(ctx),
-                    _ => new FixedWindowRateLimiterOptions { PermitLimit = 600, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+                    _ => new FixedWindowRateLimiterOptions { PermitLimit = s.GlobalPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
+            });
 
             o.OnRejected = async (context, ct) =>
             {
