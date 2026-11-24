@@ -213,10 +213,8 @@ namespace SaasPlatform.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Priority")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("TEXT")
-                        .HasDefaultValue("Medium");
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("TEXT");

@@ -77,7 +77,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant
             e.Property(t => t.Title).HasMaxLength(300);
             e.Property(t => t.Description).HasMaxLength(4000);
             e.Property(t => t.Status).HasConversion<string>().HasMaxLength(20);
-            e.Property(t => t.Priority).HasConversion<string>().HasMaxLength(20).HasDefaultValue(TaskPriority.Medium);
+            // No database default: the entity already defaults to Medium. A database default made EF treat
+            // Low (the enum's zero value) as "unset" and store Medium instead.
+            e.Property(t => t.Priority).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(t => new { t.ProjectId, t.Status });
             e.HasIndex(t => t.AssigneeUserId);
             e.HasQueryFilter(t => t.TenantId == currentTenant.TenantId);
