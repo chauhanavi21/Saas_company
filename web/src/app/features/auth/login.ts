@@ -3,6 +3,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { messageOf } from '../../core/ui/errors';
+import { safeReturnUrl } from './return-url';
 import { AuthLayout } from './auth-layout';
 
 @Component({
@@ -74,17 +75,11 @@ export class Login {
 
     const { email, password } = this.form.getRawValue();
     this.auth.login(email, password).subscribe({
-      next: () => this.router.navigateByUrl(this.safeReturnUrl()),
+      next: () => this.router.navigateByUrl(safeReturnUrl(this.returnUrl())),
       error: (e) => {
         this.error.set(messageOf(e));
         this.loading.set(false);
       },
     });
-  }
-
-  /** Only follow in-app paths, so a crafted link can't redirect someone to another site after login. */
-  private safeReturnUrl(): string {
-    const url = this.returnUrl();
-    return url.startsWith('/') && !url.startsWith('//') ? url : '/dashboard';
   }
 }
