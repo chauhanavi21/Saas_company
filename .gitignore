@@ -10,3 +10,7 @@ dist/
 *.db-shm
 *.db-wal
 appsettings.Production.json
+
+# Playwright output
+web/test-results/
+web/playwright-report/
