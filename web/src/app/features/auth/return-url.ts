@@ -13,7 +13,8 @@ export function safeReturnUrl(url: unknown): string {
   // One leading slash only: "//host" and "/\host" are treated as protocol-relative by browsers.
   if (!url.startsWith('/') || url.startsWith('//') || url.startsWith('/\\')) return DEFAULT_AFTER_LOGIN;
   // Control characters (tab, newline, ...) are stripped by browsers when they parse a URL, so
-  // "/\t/evil.com" would become "//evil.com". Refuse anything containing them.
+  // "/\t/evil.com" could become "//evil.com". Refuse anything containing them. The router already
+  // keeps these in-app, so this is defence in depth.
   if (/[\u0000-\u001f\u007f]/.test(url)) return DEFAULT_AFTER_LOGIN;
   return url;
 }
