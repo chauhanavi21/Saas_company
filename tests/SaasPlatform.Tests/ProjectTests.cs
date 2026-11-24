@@ -236,4 +236,59 @@ public class ProjectTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         Assert.Single(await (await admin.Get("/api/activity?take=1")).List());
     }
+
+    private static async Task<string> StoredPriority(Client c, Guid pid, string title)
+    {
+        var tasks = await (await c.Get($"/api/projects/{pid}/tasks")).List();
+        return tasks.Single(t => t.GetProperty("title").GetString() == title).GetProperty("priority").GetString()!;
+    }
+
+    // Low is the enum's zero value. EF treats a CLR default on a property with a database default as
+    // "not set" and lets the database fill it in, so Low used to be stored as Medium.
+    [Theory]
+    [InlineData("Low")]
+    [InlineData("Medium")]
+    [InlineData("High")]
+    public async Task A_task_keeps_the_priority_it_is_created_with(string priority)
+    {
+        var admin = await factory.RegisterCompany();
+        var pid = await NewProject(admin);
+        var created = await NewTask(admin, pid, new { title = "t", priority });
+
+        Assert.Equal(priority, created.GetProperty("priority").GetString());
+        Assert.Equal(priority, await StoredPriority(admin, pid, "t"));
+    }
+
+    [Fact]
+    public async Task A_task_without_a_priority_defaults_to_Medium()
+    {
+        var admin = await factory.RegisterCompany();
+        var pid = await NewProject(admin);
+        await NewTask(admin, pid, new { title = "plain" });
+        Assert.Equal("Medium", await StoredPriority(admin, pid, "plain"));
+    }
+
+    [Theory]
+    [InlineData("Low")]
+    [InlineData("Medium")]
+    [InlineData("High")]
+    public async Task Updating_a_task_stores_the_new_priority_including_back_to_Low(string priority)
+    {
+        var admin = await factory.RegisterCompany();
+        var pid = await NewProject(admin);
+        var tid = (await NewTask(admin, pid, new { title = "t", priority = "High" })).Id();
+
+        var updated = await (await admin.Put($"/api/projects/{pid}/tasks/{tid}", new { title = "t", status = "Todo", priority })).Element();
+        Assert.Equal(priority, updated.GetProperty("priority").GetString());
+        Assert.Equal(priority, await StoredPriority(admin, pid, "t"));
+    }
+
+    [Fact]
+    public async Task An_unknown_priority_is_rejected_and_nothing_is_created()
+    {
+        var admin = await factory.RegisterCompany();
+        var pid = await NewProject(admin);
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.Post($"/api/projects/{pid}/tasks", new { title = "x", priority = "Urgent" })).StatusCode);
+        Assert.Empty(await (await admin.Get($"/api/projects/{pid}/tasks")).List());
+    }
 }
