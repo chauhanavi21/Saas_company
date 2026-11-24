@@ -76,21 +76,23 @@ dotnet build   # rebuild BEFORE running with --no-build, or the app won't see th
 
 ## Later (deliberately postponed)
 
-- Docker / Dockerfiles, CI pipeline, cloud hosting
+- Docker / Dockerfiles, cloud hosting
 - Switch SQLite to SQL Server or PostgreSQL: change the EF provider package and `UseSqlite` in
   `Infrastructure/DependencyInjection.cs`, plus the connection string
 - Set `Jwt:Key` via user-secrets or environment variables, never in committed files
 - Upgrade Angular 21 to 22: `cd web && npx ng update @angular/core@22 @angular/cli@22`
 - Rate-limit counters are in memory, so they reset on restart and aren't shared between several server instances
 - Access tokens can't be revoked before they expire (up to 15 minutes); refresh tokens can
-- Browser-level (end-to-end) tests for the UI
 - **Third-party integrations come last**, after the core product is done: Stripe billing, email delivery and verification, hosted logging/monitoring (e.g. Serilog sinks), and anything else that calls an external service. Until then, features that need them use local stand-ins behind an interface.
 
 ## Status
 
 - Backend: `dotnet build` passes with 0 warnings and 0 errors (.NET SDK 10.0.402).
 - Frontend: `npm install && npm run build` passes.
-- **68 automated xUnit tests pass** (`dotnet test`). They start the real API in memory against SQLite and cover tenant isolation (including a mutation check: removing a query filter makes 7 tests fail), roles and the last-admin rule, the invite lifecycle (expiry, reuse, revoke, hashed storage), refresh rotation and theft detection, password change, rate limiting, validation, projects, tasks, comments, dashboard numbers and the activity feed.
+- **76 automated xUnit tests pass** (`dotnet test`). They start the real API in memory against SQLite and cover tenant isolation (including a mutation check: removing a query filter makes 7 tests fail), roles and the last-admin rule, the invite lifecycle (expiry, reuse, revoke, hashed storage), refresh tokens, rate limiting, validation, and task priority (including Low, which was once stored as Medium).
+- **30 browser tests pass** (`cd web && npx playwright test`, Chromium). They start the real API and the Angular app against a throwaway database and drive: registration and sign-in (including the sign-out-then-sign-in regression and crafted `returnUrl` values), sign-out revoking the refresh token, projects and search, the kanban board (add, drag between columns, drawer, comments, filter, priority), another company's data staying invisible, inviting and accepting teammates (single use, revoke, member view), profile and theme settings, and changing the password. They need ports 4200 and 5000 free, because the web app calls `http://localhost:5000/api` and the API allows only `http://localhost:4200`. Each regression test was shown to fail when its bug is put back.
+- **6 unit tests** for the sign-in redirect rule (`cd web && npm test`, Node's built-in runner, no extra framework).
+- CI (`.github/workflows/ci.yml`) runs the API tests on Linux and Windows with warnings as errors, the web build and unit tests, and the browser tests.
 - Verified against the running servers: CORS preflight for every endpoint the browser uses, and the 401 → refresh → retry sequence the Angular interceptor relies on.
-- **Not verified in a browser:** the redesigned Angular pages build under strict template checking and match the live API's response shapes, but nobody has clicked through them yet. The registration and dashboard flow was confirmed in a browser before the redesign.
+- **Not covered by browser tests:** visual design, the mobile layout, accessibility audits, other browsers (only Chromium), the projects page's archive and delete actions, task assignment, and removing a team member. Stripe, email and hosting are still local stand-ins.
 - `Directory.Packages.props` pins some transitive packages (OpenApi, SQLite native lib, Pkcs) to patched versions. Keep those pins in sync with the main packages when upgrading.
